@@ -1,0 +1,113 @@
+- names in {...} initialization
+   - response:
+      - for constructor calls, this is fine
+      - for aggregate initialization, it relies on names of the members rather than names of function parameters
+          - adding a constructor can potentially change the meaning of the program
+- named template arguments
+   - response: can be an independent proposal
+- perfect forwarding for named arguments
+   - motivating use case:
+      struct Rect
+      {
+          Rect(int width, int height);
+      };
+
+      auto p = make_shared<Rect>(width: 100, height: 200);
+   - response: not possible without making names part of a function's type (which is crazy)
+- should we allow
+    void f(int a = 10, int b);
+  which could be called as
+    f(b: 5)
+   - response: prefer not to do this initially to avoid scope creep, but can't think of anything wrong with it
+- a declaration that has no names at all should be ignored, i.e. a
+  subsequent declaration with names can be used as the canonical source
+  of names
+   - response: sounds reasonable
+- named call through pointer to a function
+   - basically needs to be disallowed!
+   - alternatively, we could use the names in the function pointer type
+     declaration?
+      - response: this would cover new ground by giving typedef names a use they don't currently have; let's not propose this
+- when a particular function 'f' is declared twice with different names,
+  do all function calls with the name 'f' and named arguments become ill-formed,
+  or just some (if so, which some)?
+   - e.g:
+       void f(int x);
+       void f(int y);
+       void f(double a, double b);
+
+       f(a: 1.0, b: 2.0);  // ill-formed?
+       
+   - response: this is fine; see further examples at the bottom
+- compatibility issue
+   - can suddenly call library functions with whatever names they use in
+     their headers; the library vendor then changing the name breaks code!
+   - two different vendors implementing the same API providing the same
+     signatures but different names would be incompatible
+      - names would now have to become part of the interface
+- overlap with C designated initializers
+   - response: a non-problem since we are not supporting aggregate initialization
+               or constructor calls with named arguments
+- don't want to encourage programming styles with many arguments
+   - response: named arguments can be of tremendous help even with functions
+               with few arguments, as it may still not be clear from the
+               argument value what the argument is conceptually
+
+
+Design decisions to justify
+  - declared certain parameters as named, vs. just using them as named
+    from the call site
+     - related: _force_ certain parameters to be passed as named arguments
+
+Clarify wording in a couple of places:
+  - for the i < M + N thing, emphasize that this only happens if parameter i
+    has a default argument
+  - clarify what happens if a function has a declaration with all parameters
+    unnamed (assuming we don't change the behaviour here)
+
+Some edge case examples
+
+  1) void f(int x);
+     void f(Foo a);
+
+     f(x: 2);  // ok
+     f(a: Foo());  //ok
+
+  2) void f(int x);  // #1
+     void f(Foo x);  // #2
+
+     f(x: 2);  // ok, calls #1
+     f(x: Foo());  // ok, calls #2
+
+     // still ok even if Foo is implicitly constructible from int
+
+     // note: Ehsan will try to come up with reasons we shouldn't allow this
+
+  3) void f(int x);  // #1
+     void f(int y);  // redeclares #1; the function is poisoned for the purposes of calls with named arguments
+     void f(Foo a);  // #2
+
+     f(x: 2);  // invalid, function is poisoned
+     f(y: 3);  // invalid, function is poisoned
+     f(a: Foo());  // ok, function is not poisoned
+
+  4) void f(int x);  // #1
+     void f(int y);  // redeclares #1, poisons it
+     void f(Foo x);  // #2
+
+     f(x: 2);  // invalid, even if Foo is implicitly constructible from int
+               // since we are calling through one of the poisoned names,
+               // we bail instead of silently resolving to #2
+     f(x: Foo());  // still invalid 
+
+  5) void f(int x);  // #1
+     void g() {
+       void f(int y);  // redeclares #1, poisons it in this scope only
+       void f(Foo x);  // #2
+       f(x: 1);        // invalid
+     }
+     void h() {
+       f(x: 1);  // ok, #1 is no longer poisoned
+     }
+
+ 
